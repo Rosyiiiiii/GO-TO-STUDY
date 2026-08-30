@@ -2069,6 +2069,1708 @@ class GrowthApp {
     this.showToast('🎉 兑换成功：' + reward.name, 'success');
   }
 
+part3 = '''
+<script>
+// ==================== 数据存储 ====================
+const STORAGE_KEY = 'go_study_data_v1';
+
+function getDefaultData() {
+  const today = formatDate(new Date());
+  return {
+    version: 1,
+    onboardingDone: false,
+    plans: [],
+    currentPlanId: null,
+    records: {},
+    notes: [],
+    rewards: [],
+    streak: 0,
+    totalPoints: 0,
+    freeDaysUsed: 0,
+    extraRestDays: 0,
+    lastActiveDate: today,
+    soulQuestionShown: false,
+    cooldownUntil: null,
+    settings: { minUnitLevel: 'section' }
+  };
+}
+
+let appData = getDefaultData();
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      appData = { ...getDefaultData(), ...parsed };
+      if (!appData.records) appData.records = {};
+      if (!appData.notes) appData.notes = [];
+      if (!appData.rewards) appData.rewards = [];
+      if (!appData.settings) appData.settings = { minUnitLevel: 'section' };
+    }
+  } catch (e) { console.error('加载数据失败', e); }
+}
+
+function saveData() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); }
+  catch (e) { console.error('保存数据失败', e); }
+}
+
+function formatDate(d) {
+  const date = new Date(d);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getToday() { return formatDate(new Date()); }
+
+function getYesterday() {
+  const d = new Date(); d.setDate(d.getDate() - 1);
+  return formatDate(d);
+}
+
+function getDateDiff(d1, d2) {
+  const a = new Date(d1 + 'T00:00:00');
+  const b = new Date(d2 + 'T00:00:00');
+  return Math.floor((b - a) / (1000 * 60 * 60 * 24));
+}
+
+function addDays(dateStr, days) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return formatDate(d);
+}
+
+function ensureRecord(date) {
+  if (!appData.records[date]) {
+    appData.records[date] = {
+      tasks: [], completed: [], extraTasks: [],
+      reviewTasks: [], reviewCompleted: [], reviewSkipped: false, reviewPoints: 0,
+      studyTime: 0, timerStart: null, restDay: false,
+      reflection: '', reflectionFrozen: false,
+      points: { base: 0, streak: 0, extra: 0, total: 0 }, frozenPoints: 0
+    };
+  }
+  return appData.records[date];
+}
+
+// ==================== 初始化 ====================
+function init() {
+  loadData();
+  const today = getToday();
+
+  if (appData.cooldownUntil && new Date() < new Date(appData.cooldownUntil)) {
+    showCooldown(); return;
+  } else if (appData.cooldownUntil) {
+    appData.cooldownUntil = null; saveData();
+  }
+
+  if (appData.lastActiveDate !== today) {
+    handleNewDay(appData.lastActiveDate, today);
+    appData.lastActiveDate = today; saveData();
+  }
+
+  if (!appData.onboardingDone) {
+    document.getElementById('onboarding').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+  } else {
+    document.getElementById('onboarding').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    setupApp();
+  }
+}
+
+function handleNewDay(lastDate, today) {
+  const lastRecord = appData.records[lastDate];
+  if (!lastRecord || !lastRecord.restDay) {
+    if (!lastRecord || !lastRecord.completed || lastRecord.completed.length === 0) {
+      appData.streak = 0;
+    }
+  }
+  const lastMonth = lastDate.substring(0, 7);
+  const thisMonth = today.substring(0, 7);
+  if (lastMonth !== thisMonth) {
+    appData.freeDaysUsed = 0;
+    checkFullAttendance(lastMonth);
+  }
+  ensureRecord(today);
+}
+
+function checkFullAttendance(monthStr) {
+  const daysInMonth = new Date(parseInt(monthStr.split('-')[0]), parseInt(monthStr.split('-')[1]), 0).getDate();
+  let hasRest = false;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = monthStr + '-' + String(d).padStart(2, '0');
+    const rec = appData.records[ds];
+    if (rec && rec.restDay) { hasRest = true; break; }
+  }
+  if (!hasRest) {
+    appData.extraRestDays = (appData.extraRestDays || 0) + 5;
+  }
+}
+
+function setupApp() {
+  document.getElementById('current-date').textContent = getToday();
+  updatePlanSelector();
+  ensureRecord(getToday());
+  generateDailyTasks();
+  generateReviewTasks();
+  checkReflectionBanner();
+  updatePointsDisplay();
+  renderTodayPage();
+  renderOutlinePage();
+  renderReviewPage();
+  renderStatsPage();
+  renderNotesPage();
+  renderSettingsPage();
+  initTimer();
+  initStarter();
+
+  const uncompletedDays = getUncompletedDays();
+  if (uncompletedDays >= 3 && !appData.soulQuestionShown) {
+    setTimeout(() => showSoulQuestion(), 800);
+  }
+}
+
+function getUncompletedDays() {
+  let count = 0;
+  const today = getToday();
+  for (let i = 1; i <= 30; i++) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const ds = formatDate(d);
+    const rec = appData.records[ds];
+    if (!rec) { count++; continue; }
+    if (rec.restDay) continue;
+    if (rec.completed && rec.tasks) {
+      const completedCount = rec.completed.length;
+      const totalCount = rec.tasks.length;
+      if (totalCount > 0 && completedCount >= totalCount) continue;
+    }
+    count++;
+    if (count >= 3) break;
+  }
+  return count;
+}
+
+// ==================== 引导页 ====================
+function skipOnboarding() {
+  appData.onboardingDone = true; saveData();
+  document.getElementById('onboarding').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  setupApp();
+}
+
+function createFirstPlan() {
+  const name = document.getElementById('plan-name').value.trim();
+  const deadline = document.getElementById('plan-deadline').value;
+  const tagsStr = document.getElementById('plan-tags').value.trim();
+  if (!name) { alert('请输入计划名称'); return; }
+  if (!deadline) { alert('请选择截止日期'); return; }
+
+  const plan = {
+    id: 'plan_' + Date.now(),
+    name, deadline,
+    tags: tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [],
+    outline: [], createdAt: getToday()
+  };
+  appData.plans.push(plan);
+  appData.currentPlanId = plan.id;
+  saveData();
+  document.getElementById('onboarding-step1').classList.add('hidden');
+  document.getElementById('onboarding-step2').classList.remove('hidden');
+}
+
+function importOutlineFromOnboarding() {
+  const text = document.getElementById('outline-paste').value.trim();
+  if (text) {
+    const outline = smartParseOutline(text);
+    const plan = appData.plans.find(p => p.id === appData.currentPlanId);
+    if (plan) { plan.outline = outline; saveData(); }
+  }
+  finishOnboarding();
+}
+
+function finishOnboarding() {
+  appData.onboardingDone = true; saveData();
+  document.getElementById('onboarding').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  setupApp();
+}
+
+// ==================== 大纲解析 ====================
+function smartParseOutline(text) {
+  const lines = text.split('\\n').map(l => l.trim()).filter(Boolean);
+  const root = [];
+  const stack = [{ children: root, level: 0 }];
+
+  lines.forEach(line => {
+    let level = 0;
+    let title = line;
+
+    // 检测章节层级
+    const chapterMatch = line.match(/^(第[一二三四五六七八九十百千万\\d]+章)/);
+    const sectionMatch = line.match(/^(\\d+\\.\\d+)/);
+    const pointMatch = line.match(/^(\\d+\\.\\d+\\.\\d+)/);
+    const numberMatch = line.match(/^(\\d+)[.\\s]/);
+
+    if (pointMatch) level = 3;
+    else if (sectionMatch) level = 2;
+    else if (chapterMatch) level = 1;
+    else if (numberMatch) level = 1;
+
+    const node = {
+      id: 'node_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      title,
+      level,
+      completed: false,
+      firstLearnedDate: null,
+      reviewCycles: [
+        { day: 1, completed: false, date: null },
+        { day: 2, completed: false, date: null },
+        { day: 4, completed: false, date: null },
+        { day: 7, completed: false, date: null },
+        { day: 15, completed: false, date: null },
+        { day: 30, completed: false, date: null }
+      ],
+      children: []
+    };
+
+    while (stack.length > 1 && stack[stack.length - 1].level >= level) {
+      stack.pop();
+    }
+    stack[stack.length - 1].children.push(node);
+    stack.push({ children: node.children, level });
+  });
+
+  return root;
+}
+
+// ==================== 页面切换 ====================
+function switchPage(page) {
+  document.querySelectorAll('.page-content').forEach(el => el.classList.add('hidden'));
+  document.getElementById('page-' + page).classList.remove('hidden');
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-item[data-page="' + page + '"]').forEach(el => el.classList.add('active'));
+  document.querySelectorAll('.mobile-nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.mobile-nav-item[data-page="' + page + '"]').forEach(el => el.classList.add('active'));
+
+  const titles = { today: '今日', outline: '学习大纲', review: '复习', stats: '统计', notes: '闪念笔记', settings: '设置' };
+  document.getElementById('page-title').textContent = titles[page] || page;
+
+  if (page === 'today') { renderTodayPage(); generateDailyTasks(); generateReviewTasks(); }
+  if (page === 'outline') renderOutlinePage();
+  if (page === 'review') renderReviewPage();
+  if (page === 'stats') renderStatsPage();
+  if (page === 'notes') renderNotesPage();
+  if (page === 'settings') renderSettingsPage();
+}
+
+// ==================== 计划管理 ====================
+function updatePlanSelector() {
+  const select = document.getElementById('plan-select');
+  select.innerHTML = '';
+  appData.plans.forEach(plan => {
+    const opt = document.createElement('option');
+    opt.value = plan.id;
+    opt.textContent = plan.name;
+    if (plan.id === appData.currentPlanId) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
+function switchPlan(planId) {
+  appData.currentPlanId = planId;
+  saveData();
+  renderOutlinePage();
+  generateDailyTasks();
+}
+
+function addPlan() {
+  const name = document.getElementById('new-plan-name').value.trim();
+  const deadline = document.getElementById('new-plan-deadline').value;
+  if (!name) { alert('请输入计划名称'); return; }
+  const plan = {
+    id: 'plan_' + Date.now(),
+    name, deadline: deadline || getToday(),
+    tags: [], outline: [], createdAt: getToday()
+  };
+  appData.plans.push(plan);
+  if (!appData.currentPlanId) appData.currentPlanId = plan.id;
+  saveData();
+  updatePlanSelector();
+  renderSettingsPage();
+}
+
+// ==================== 大纲页面 ====================
+function renderOutlinePage() {
+  const plan = appData.plans.find(p => p.id === appData.currentPlanId);
+  if (!plan) {
+    document.getElementById('outline-tree').innerHTML = '<div class="empty-state"><div class="icon">📚</div><p>暂无大纲，请先导入</p></div>';
+    return;
+  }
+
+  const treeEl = document.getElementById('outline-tree');
+  treeEl.innerHTML = '';
+
+  const totalUnits = countMinUnits(plan.outline);
+  const completedUnits = countCompletedMinUnits(plan.outline);
+  const progress = totalUnits > 0 ? Math.round((completedUnits / totalUnits) * 100) : 0;
+
+  document.getElementById('outline-progress-bar').style.width = progress + '%';
+  document.getElementById('outline-progress-text').textContent = `总进度：${progress}%（${completedUnits}/${totalUnits}）`;
+
+  plan.outline.forEach(node => {
+    treeEl.appendChild(renderOutlineNode(node));
+  });
+}
+
+function renderOutlineNode(node, depth = 0) {
+  const div = document.createElement('div');
+  div.className = 'outline-node';
+
+  const header = document.createElement('div');
+  header.className = 'outline-node-header';
+  header.style.paddingLeft = (12 + depth * 20) + 'px';
+
+  const hasChildren = node.children && node.children.length > 0;
+
+  const toggle = document.createElement('span');
+  toggle.className = 'outline-toggle';
+  toggle.textContent = hasChildren ? '▼' : '';
+  toggle.onclick = (e) => {
+    e.stopPropagation();
+    const childrenDiv = div.querySelector('.outline-children');
+    if (childrenDiv) {
+      childrenDiv.classList.toggle('collapsed');
+      toggle.textContent = childrenDiv.classList.contains('collapsed') ? '▶' : '▼';
+    }
+  };
+
+  const checkbox = document.createElement('span');
+  checkbox.className = 'outline-checkbox' + (node.completed ? ' checked' : '');
+  checkbox.onclick = (e) => {
+    e.stopPropagation();
+    toggleNodeCompletion(node);
+    renderOutlinePage();
+    generateDailyTasks();
+    generateReviewTasks();
+  };
+
+  const text = document.createElement('span');
+  text.className = 'outline-text';
+  text.textContent = node.title;
+
+  const progress = document.createElement('span');
+  progress.className = 'outline-progress';
+  if (hasChildren) {
+    const childTotal = countMinUnits(node.children);
+    const childDone = countCompletedMinUnits(node.children);
+    progress.textContent = childTotal > 0 ? `${childDone}/${childTotal}` : '';
+  }
+
+  header.appendChild(toggle);
+  header.appendChild(checkbox);
+  header.appendChild(text);
+  header.appendChild(progress);
+  div.appendChild(header);
+
+  if (hasChildren) {
+    const childrenDiv = document.createElement('div');
+    childrenDiv.className = 'outline-children';
+    node.children.forEach(child => {
+      childrenDiv.appendChild(renderOutlineNode(child, depth + 1));
+    });
+    div.appendChild(childrenDiv);
+  }
+
+  return div;
+}
+
+function countMinUnits(nodes) {
+  if (!nodes || nodes.length === 0) return 0;
+  let count = 0;
+  nodes.forEach(node => {
+    if (isMinUnit(node)) {
+      count++;
+    } else {
+      count += countMinUnits(node.children);
+    }
+  });
+  return count;
+}
+
+function countCompletedMinUnits(nodes) {
+  if (!nodes || nodes.length === 0) return 0;
+  let count = 0;
+  nodes.forEach(node => {
+    if (isMinUnit(node)) {
+      if (node.completed) count++;
+    } else {
+      count += countCompletedMinUnits(node.children);
+    }
+  });
+  return count;
+}
+
+function isMinUnit(node) {
+  const level = appData.settings.minUnitLevel || 'section';
+  const levelMap = { 'chapter': 1, 'section': 2, 'point': 3 };
+  const targetLevel = levelMap[level] || 2;
+  return node.level >= targetLevel || !node.children || node.children.length === 0;
+}
+
+function toggleNodeCompletion(node) {
+  const wasCompleted = node.completed;
+  node.completed = !node.completed;
+
+  if (node.completed && !wasCompleted) {
+    node.firstLearnedDate = getToday();
+  } else if (!node.completed) {
+    node.firstLearnedDate = null;
+    node.reviewCycles.forEach(c => { c.completed = false; c.date = null; });
+  }
+
+  if (!isMinUnit(node) && node.children) {
+    node.children.forEach(child => {
+      if (child.completed !== node.completed) {
+        toggleNodeCompletion(child);
+      }
+    });
+  }
+
+  saveData();
+}
+
+function showImportOutline() {
+  document.getElementById('outline-import-section').classList.remove('hidden');
+}
+
+function hideImportOutline() {
+  document.getElementById('outline-import-section').classList.add('hidden');
+}
+
+function smartImportOutline() {
+  const text = document.getElementById('outline-import-text').value.trim();
+  if (!text) return;
+  const outline = smartParseOutline(text);
+  const plan = appData.plans.find(p => p.id === appData.currentPlanId);
+  if (plan) {
+    plan.outline = outline;
+    saveData();
+    renderOutlinePage();
+    hideImportOutline();
+  }
+}
+
+function exportOutline() {
+  const plan = appData.plans.find(p => p.id === appData.currentPlanId);
+  if (!plan) return;
+  const dataStr = JSON.stringify(plan.outline, null, 2);
+  const blob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = plan.name + '_outline.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ==================== 每日任务推荐 ====================
+function generateDailyTasks() {
+  const today = getToday();
+  const rec = ensureRecord(today);
+  const plan = appData.plans.find(p => p.id === appData.currentPlanId);
+
+  if (rec.restDay) {
+    rec.tasks = [];
+    saveData();
+    return;
+  }
+
+  // 检查是否已有任务
+  if (rec.tasks && rec.tasks.length > 0) return;
+
+  // 顺延昨日未完成任务
+  const yesterday = getYesterday();
+  const yestRec = appData.records[yesterday];
+  let carriedTasks = [];
+  let penaltyTasks = [];
+
+  if (yestRec && yestRec.tasks && yestRec.tasks.length > 0) {
+    yestRec.tasks.forEach(task => {
+      if (!yestRec.completed.includes(task.id)) {
+        if (task.fromOutline) {
+          // 大纲关联任务：顺延 + 翻倍惩罚标记
+          penaltyTasks.push({ ...task, penalty: true, id: 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) });
+        } else {
+          // 用户添加任务：顺延但不惩罚
+          carriedTasks.push({ ...task, id: 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5) });
+        }
+      }
+    });
+  }
+
+  // 计算今日推荐量
+  let newTasks = [];
+  if (plan && plan.outline && plan.outline.length > 0) {
+    const totalUnits = countMinUnits(plan.outline);
+    const completedUnits = countCompletedMinUnits(plan.outline);
+    const remaining = totalUnits - completedUnits;
+
+    if (remaining > 0 && plan.deadline) {
+      const remainingDays = getDateDiff(getToday(), plan.deadline);
+      if (remainingDays > 0) {
+        const recommendCount = Math.ceil((remaining / remainingDays) * 1.2);
+        const uncompletedNodes = getUncompletedMinUnits(plan.outline);
+        const selectCount = Math.min(recommendCount, uncompletedNodes.length);
+
+        for (let i = 0; i < selectCount; i++) {
+          if (uncompletedNodes[i]) {
+            newTasks.push({
+              id: 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+              text: uncompletedNodes[i].title,
+              nodeId: uncompletedNodes[i].id,
+              fromOutline: true,
+              penalty: false
+            });
+          }
+        }
+      }
+    }
+  }
+
+  rec.tasks = [...penaltyTasks, ...carriedTasks, ...newTasks];
+  saveData();
+}
+
+function getUncompletedMinUnits(nodes) {
+  const result = [];
+  if (!nodes) return result;
+  nodes.forEach(node => {
+    if (isMinUnit(node)) {
+      if (!node.completed) result.push(node);
+    } else {
+      result.push(...getUncompletedMinUnits(node.children));
+    }
+  });
+  return result;
+}
+
+function regenerateTasks() {
+  const today = getToday();
+  const rec = ensureRecord(today);
+  rec.tasks = [];
+  saveData();
+  generateDailyTasks();
+  renderTodayPage();
+}
+
+// ==================== 今日页面渲染 ====================
+function renderTodayPage() {
+  const today = getToday();
+  const rec = ensureRecord(today);
+  const tasksEl = document.getElementById('today-tasks');
+  tasksEl.innerHTML = '';
+
+  if (rec.restDay) {
+    tasksEl.innerHTML = '<div class="empty-state"><div class="icon">😴</div><p>今日休整，任务已顺延至明日</p></div>';
+    document.getElementById('today-progress-text').textContent = '休整';
+    document.getElementById('today-progress-bar').style.width = '0%';
+    return;
+  }
+
+  if (!rec.tasks || rec.tasks.length === 0) {
+    tasksEl.innerHTML = '<div class="empty-state"><div class="icon">🎯</div><p>今日暂无推荐任务，请导入学习大纲</p></div>';
+    document.getElementById('today-progress-text').textContent = '0%';
+    document.getElementById('today-progress-bar').style.width = '0%';
+    return;
+  }
+
+  rec.tasks.forEach(task => {
+    const div = document.createElement('div');
+    div.className = 'task-item';
+    if (rec.completed.includes(task.id)) div.classList.add('completed');
+    if (task.penalty) div.classList.add('penalty');
+    if (!task.fromOutline) div.classList.add('user-added');
+
+    const checkbox = document.createElement('span');
+    checkbox.className = 'task-checkbox' + (rec.completed.includes(task.id) ? ' checked' : '');
+    checkbox.onclick = () => toggleTaskCompletion(task.id);
+
+    const text = document.createElement('span');
+    text.className = 'task-text';
+    text.textContent = task.text + (task.penalty ? ' （惩罚翻倍）' : '');
+
+    const actions = document.createElement('div');
+    actions.className = 'task-actions';
+    if (!task.fromOutline) {
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn btn-ghost btn-xs';
+      delBtn.textContent = '删除';
+      delBtn.onclick = () => deleteTask(task.id);
+      actions.appendChild(delBtn);
+    }
+
+    div.appendChild(checkbox);
+    div.appendChild(text);
+    div.appendChild(actions);
+    tasksEl.appendChild(div);
+  });
+
+  const total = rec.tasks.length;
+  const done = rec.completed.length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  document.getElementById('today-progress-text').textContent = pct + '%';
+  document.getElementById('today-progress-bar').style.width = pct + '%';
+
+  // 更新复习列表
+  renderTodayReview();
+  updateStudyTimeDisplay();
+}
+
+function toggleTaskCompletion(taskId) {
+  const today = getToday();
+  const rec = ensureRecord(today);
+  if (rec.completed.includes(taskId)) {
+    rec.completed = rec.completed.filter(id => id !== taskId);
+  } else {
+    rec.completed.push(taskId);
+    // 标记大纲节点完成
+    const task = rec.tasks.find(t => t.id === taskId);
+    if (task && task.nodeId) {
+      const plan = appData.plans.find(p => p.id === appData.currentPlanId);
+      if (plan) {
+        const node = findNodeById(plan.outline, task.nodeId);
+        if (node && !node.completed) {
+          toggleNodeCompletion(node);
+        }
+      }
+    }
+  }
+  saveData();
+  renderTodayPage();
+  updatePointsDisplay();
+  checkReflectionBanner();
+}
+
+function findNodeById(nodes, id) {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    if (node.children) {
+      const found = findNodeById(node.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function deleteTask(taskId) {
+  const today = getToday();
+  const rec = ensureRecord(today);
+  rec.tasks = rec.tasks.filter(t => t.id !== taskId);
+  rec.completed = rec.completed.filter(id => id !== taskId);
+  saveData();
+  renderTodayPage();
+}
+
+function openAddTaskModal() {
+  document.getElementById('add-task-modal').classList.remove('hidden');
+}
+
+function closeAddTaskModal() {
+  document.getElementById('add-task-modal').classList.add('hidden');
+  document.getElementById('new-task-input').value = '';
+}
+
+function addCustomTask() {
+  const text = document.getElementById('new-task-input').value.trim();
+  if (!text) return;
+  const today = getToday();
+  const rec = ensureRecord(today);
+  rec.tasks.push({
+    id: 'task_' + Date.now(),
+    text,
+    fromOutline: false,
+    penalty: false
+  });
+  saveData();
+  closeAddTaskModal();
+  renderTodayPage();
+}
+
+// ==================== 复习系统 ====================
+function generateReviewTasks() {
+  const today = getToday();
+  const rec = ensureRecord(today);
+  const plan = appData.plans.find(p => p.id === appData.currentPlanId);
+  if (!plan || !plan.outline) return;
+
+  const reviewTasks = [];
+  const cycles = [1, 2, 4, 7, 15, 30];
+
+  function scanNodes(nodes) {
+    nodes.forEach(node => {
+      if (node.completed && node.firstLearnedDate) {
+        cycles.forEach((cycleDay, idx) => {
+          const cycle = node.reviewCycles[idx];
+          if (!cycle.completed) {
+            const dueDate = addDays(node.firstLearnedDate, cycleDay);
+            if (dueDate === today) {
+              reviewTasks.push({
+                nodeId: node.id,
+                title: node.title,
+                cycleIndex: idx,
+                cycleDay: cycleDay,
+                firstDate: node.firstLearnedDate
+              });
+            }
+          }
+        });
+      }
+      if (node.children) scanNodes(node.children);
+    });
+  }
+
+  scanNodes(plan.outline);
+  rec.reviewTasks = reviewTasks;
+  saveData();
+}
+
+function renderTodayReview() {
+  const today = getToday();
+  const rec = ensureRecord(today);
+  const listEl = document.getElementById('today-review-list');
+  const emptyEl = document.getElementById('review-empty');
+
+  listEl.innerHTML = '';
+
+  if (!rec.reviewTasks || rec.reviewTasks.length === 0) {
+    listEl.classList.add('hidden');
+    emptyEl.classList.remove('hidden');
+  } else {
+    listEl.classList.remove('hidden');
+    emptyEl.classList.add('hidden');
+
+    rec.reviewTasks.forEach(task => {
+      const div = document.createElement('div');
+      div.className = 'review-item';
+
+      const info = document.createElement('div');
+      info.className = 'review-info';
+      const title = document.createElement('div');
+      title.className = 'review-title';
+      title.textContent = task.title;
+      const meta = document.createElement('div');
+      meta.className = 'review-meta';
+      const daysSince = getDateDiff(task.firstDate, getToday());
+      meta.textContent = `距首次学习 ${daysSince} 天 · 第 ${task.cycleIndex + 1} 次复习（${task.cycleDay}天后）`;
+      info.appendChild(title);
+      info.appendChild(meta);
+
+      const actions = document.createElement('div');
+      actions.className = 'review-actions';
+
+      const doneBtn = document.createElement('button');
+      doneBtn.className = 'btn btn-primary btn-sm';
+      doneBtn.textContent = '复习搞定';
+      doneBtn.onclick = () => completeReview(task.nodeId, task.cycleIndex);
+
+      const skipBtn = document.createElement('button');
+      skipBtn.className = 'btn btn-secondary btn-sm';
+      skipBtn.textContent = '今日跳过';
+      skipBtn.onclick = () => skipReview();
+
+      actions.appendChild(doneBtn);
+      actions.appendChild(skipBtn);
+
+      div.appendChild(info);
+      div.appendChild(actions);
+      listEl.appendChild(div);
+    });
+  }
+
+  // 连续复习天数
+  let reviewStreak = 0;
+  for (let i = 0; i < 365; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const ds = formatDate(d);
+    const r = appData.records[ds];
+    if (!r) break;
+    if (r.reviewCompleted && r.reviewCompleted.length > 0) {
+      reviewStreak++;
+    } else if (r.reviewSkipped) {
+      reviewStreak++;
+    } else {
+      break;
+    }
+  }
+  document.getElementById('review-streak-info').textContent = `连续复习：${reviewStreak}天`;
+}
+
+function renderReviewPage() {
+  const today = getToday();
+  const rec = ensureRecord(today);
+  const listEl = document.getElementById('review-page-list');
+  const emptyEl = document.getElementById('review-page-empty');
+  const subtitle = document.getElementById('review-page-subtitle');
+
+  subtitle.textContent = `今日有 ${rec.reviewTasks ? rec.reviewTasks.length : 0} 个知识点待复习`;
+  listEl.innerHTML = '';
+
+  if (!rec.reviewTasks || rec.reviewTasks.length === 0) {
+    listEl.classList.add('hidden');
+    emptyEl.classList.remove('hidden');
+  } else {
+    listEl.classList.remove('hidden');
+    emptyEl.classList.add('hidden');
+
+    rec.reviewTasks.forEach(task => {
+      const div = document.createElement('div');
+      div.className = 'review-item';
+
+      const info = document.createElement('div');
+      info.className = 'review-info';
+      const title = document.createElement('div');
+      title.className = 'review-title';
+      title.textContent = task.title;
+      const meta = document.createElement('div');
+      meta.className = 'review-meta';
+      const daysSince = getDateDiff(task.firstDate, getToday());
+      meta.textContent = `距首次学习 ${daysSince} 天 · 第 ${task.cycleIndex + 1} 次复习（${task.cycleDay}天后）`;
+      info.appendChild(title);
+      info.appendChild(meta);
+
+      const actions = document.createElement('div');
+      actions.className = 'review-actions';
+
+      const doneBtn = document.createElement('button');
+      doneBtn.className = 'btn btn-primary btn-sm';
+      doneBtn.textContent = '复习搞定';
+      doneBtn.onclick = () => completeReview(task.nodeId, task.cycleIndex);
+
+      const skipBtn = document.createElement('button');
+      skipBtn.className = 'btn btn-secondary btn-sm';
+      skipBtn.textContent = '今日跳过';
+      skipBtn.onclick = () => skipReview();
+
+      actions.appendChild(doneBtn);
+      actions.appendChild(skipBtn);
+
+      div.appendChild(info);
+      div.appendChild(actions);
+      listEl.appendChild(div);
+    });
+  }
+}
+
+function completeReview(nodeId, cycleIndex) {
+  const today = getToday();
+  const rec = ensureRecord(today);
+
+  const plan = appData.plans.find(p => p.id === appData.currentPlanId);
+  if (plan) {
+    const node = findNodeById(plan.outline, nodeId);
+    if (node && node.reviewCycles[cycleIndex]) {
+      node.reviewCycles[cycleIndex].completed = true;
+      node.reviewCycles[cycleIndex].date = today;
+    }
+  }
+
+  if (!rec.reviewCompleted) rec.reviewCompleted = [];
+  rec.reviewCompleted.push(nodeId + '_' + cycleIndex);
+
+  // 计算复习奖励
+  const basePoints = 10;
+  rec.reviewPoints = Math.floor(basePoints / 2);
+
+  saveData();
+  renderTodayPage();
+  renderReviewPage();
+  updatePointsDisplay();
+}
+
+function skipReview() {
+  const today = getToday();
+  const rec = ensureRecord(today);
+  rec.reviewSkipped = true;
+  saveData();
+  renderTodayPage();
+  renderReviewPage();
+}
+
+// ==================== 积分系统 ====================
+function updatePointsDisplay() {
+  const today = getToday();
+  const rec = ensureRecord(today);
+
+  // 计算今日应得积分
+  let basePoints = 0;
+  let streakPoints = 0;
+  let extraPoints = 0;
+
+  const totalTasks = rec.tasks ? rec.tasks.length : 0;
+  const completedTasks = rec.completed ? rec.completed.length : 0;
+
+  if (totalTasks > 0 && completedTasks >= totalTasks) {
+    basePoints = 10;
+    if (appData.streak >= 3) {
+      streakPoints = 5;
+    }
+  }
+
+  // 额外完成（超出推荐量的手动勾选）
+  // 这里简化处理：用户手动添加并完成的任务算额外
+  if (rec.tasks) {
+    rec.tasks.forEach(task => {
+      if (!task.fromOutline && rec.completed.includes(task.id)) {
+        extraPoints += 3;
+      }
+    });
+  }
+
+  // 复习奖励
+  const reviewReward = rec.reviewPoints || 0;
+
+  // 检查是否已复盘
+  const hasReflection = rec.reflection && rec.reflection.length >= 10;
+
+  if (hasReflection) {
+    rec.points = { base: basePoints, streak: streakPoints, extra: extraPoints, total: basePoints + streakPoints + extraPoints + reviewReward };
+    rec.frozenPoints = 0;
+    // 更新总积分
+    // 注意：这里简化处理，实际应该只在首次完成时加一次
+  } else {
+    rec.points = { base: 0, streak: 0, extra: 0, total: 0 };
+    rec.frozenPoints = basePoints + streakPoints + extraPoints + reviewReward;
+  }
+
+  // 冷酷模式检查
+  const freeDaysLeft = 3 - (appData.freeDaysUsed || 0);
+  const isCoolMode = freeDaysLeft <= 0;
+
+  document.getElementById('points-total').textContent = appData.totalPoints;
+  document.getElementById('points-streak').textContent = appData.streak;
+  document.getElementById('points-frozen').textContent = rec.frozenPoints;
+  document.getElementById('points-rest').textContent = Math.max(0, freeDaysLeft);
+  document.getElementById('points-detail').textContent = `基础+${basePoints} | 连续+${streakPoints} | 额外+${extraPoints} | 复习+${reviewReward}`;
+  document.getElementById('sidebar-points').textContent = appData.totalPoints;
+
+  const coolIndicator = document.getElementById('cool-mode-indicator');
+  if (isCoolMode) {
+    coolIndicator.classList.remove('hidden');
+  } else {
+    coolIndicator.classList.add('hidden');
+  }
+
+  saveData();
+}
+
+function finalizeDailyPoints() {
+  const today = getToday();
+  const rec = ensureRecord(today);
+  if (rec.pointsFinalized) return;
+
+  const hasReflection = rec.reflection && rec.reflection.length >= 10;
+  if (hasReflection) {
+    appData.totalPoints += rec.points.total;
+    rec.pointsFinalized = true;
+
+    // 更新连续天数
+    const totalTasks = rec.tasks ? rec.tasks.length : 0;
+    const completedTasks = rec.completed ? rec.completed.length : 0;
+    if (totalTasks > 0 && completedTasks >= totalTasks) {
+      appData.streak++;
+    } else if (!rec.restDay) {
+      // 未完成且非休整：扣15分
+      appData.totalPoints -= 15;
+    }
+  } else {
+    // 未复盘，积分冻结
+    rec.frozenPoints = rec.points.base + rec.points.streak + rec.points.extra + rec.reviewPoints;
+  }
+
+  saveData();
+  updatePointsDisplay();
+}
+
+// ==================== 复盘系统 ====================
+function checkReflectionBanner() {
+  const yesterday = getYesterday();
+  const yestRec = appData.records[yesterday];
+  const banner = document.getElementById('reflection-banner');
+
+  if (yestRec && !yestRec.restDay && !yestRec.reflection) {
+    banner.classList.remove('hidden');
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+function openReflectionModal() {
+  document.getElementById('reflection-modal').classList.remove('hidden');
+  document.getElementById('reflection-input').value = '';
+  document.getElementById('reflection-error').style.display = 'none';
+}
+
+function closeReflectionModal() {
+  document.getElementById('reflection-modal').classList.add('hidden');
+}
+
+function submitReflection() {
+  const text = document.getElementById('reflection-input').value.trim();
+  if (text.length < 10) {
+    document.getElementById('reflection-error').style.display = 'block';
+    return;
+  }
+
+  const yesterday = getYesterday();
+  const yestRec = appData.records[yesterday];
+  if (yestRec) {
+    yestRec.reflection = text;
+    // 解冻昨日积分
+    if (yestRec.frozenPoints > 0) {
+      appData.totalPoints += yestRec.frozenPoints;
+      yestRec.frozenPoints = 0;
+    }
+    saveData();
+  }
+
+  closeReflectionModal();
+  checkReflectionBanner();
+  updatePointsDisplay();
+}
+
+// ==================== 休整系统 ====================
+function clickRestDay() {
+  const today = getToday();
+  const rec = ensureRecord(today);
+
+  if (rec.restDay) {
+    alert('今天已经是休整日了');
+    return;
+  }
+
+  const freeDaysLeft = 3 - (appData.freeDaysUsed || 0);
+  const extraDays = appData.extraRestDays || 0;
+
+  if (freeDaysLeft > 0) {
+    if (!confirm(`确认今日休整？本月还剩 ${freeDaysLeft} 次基础休整额度。`)) return;
+    appData.freeDaysUsed = (appData.freeDaysUsed || 0) + 1;
+  } else if (extraDays > 0) {
+    if (!confirm(`确认今日休整？使用 ${extraDays > 0 ? '奖励' : '积分兑换的'}休整额度。`)) return;
+    appData.extraRestDays = extraDays - 1;
+  } else {
+    if (!confirm('本月基础休整已用完！进入冷酷模式，未完成将扣15分。确认休整？')) return;
+    // 冷酷模式下休整也扣积分？根据文档：超3次后未完成才扣，休整本身不扣
+  }
+
+  rec.restDay = true;
+  rec.tasks = [];
+  saveData();
+  renderTodayPage();
+  updatePointsDisplay();
+}
+
+// ==================== 灵魂拷问 ====================
+function showSoulQuestion() {
+  appData.soulQuestionShown = true;
+  saveData();
+  document.getElementById('soul-modal').classList.remove('hidden');
+}
+
+function soulContinue() {
+  document.getElementById('soul-modal').classList.add('hidden');
+  const today = getToday();
+  const rec = ensureRecord(today);
+  // 今日推荐量翻倍，当日所有积分奖励取消
+  if (rec.tasks) {
+    rec.tasks.forEach(task => {
+      task.penalty = true;
+    });
+  }
+  rec.noRewardToday = true;
+  saveData();
+  renderTodayPage();
+}
+
+function soulGiveUp() {
+  document.getElementById('soul-modal').classList.add('hidden');
+  const cooldownDate = new Date();
+  cooldownDate.setDate(cooldownDate.getDate() + 7);
+  appData.cooldownUntil = cooldownDate.toISOString();
+  saveData();
+  showCooldown();
+}
+
+function showCooldown() {
+  document.getElementById('cooldown-overlay').classList.remove('hidden');
+  document.getElementById('app').classList.add('hidden');
+  updateCooldownTimer();
+  setInterval(updateCooldownTimer, 1000);
+}
+
+function updateCooldownTimer() {
+  if (!appData.cooldownUntil) return;
+  const now = new Date();
+  const end = new Date(appData.cooldownUntil);
+  const diff = end - now;
+  if (diff <= 0) {
+    location.reload();
+    return;
+  }
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const secs = Math.floor((diff % (1000 * 60)) / 1000);
+  document.getElementById('cooldown-timer').textContent = `${days}天 ${String(hours).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+}
+
+// ==================== 计时器 ====================
+let timerInterval = null;
+let timerSeconds = 0;
+let timerRunning = false;
+let timerStartTime = null;
+
+function initTimer() {
+  const today = getToday();
+  const rec = ensureRecord(today);
+
+  // 恢复计时器状态
+  if (rec.timerStart) {
+    const start = new Date(rec.timerStart);
+    const now = new Date();
+    const elapsed = Math.floor((now - start) / 1000);
+    timerSeconds = (rec.studyTime || 0) + elapsed;
+    timerRunning = true;
+    timerStartTime = start;
+    startTimerDisplay();
+  } else {
+    timerSeconds = rec.studyTime || 0;
+    updateTimerDisplay();
+  }
+  updateStudyTimeDisplay();
+}
+
+function updateTimerDisplay() {
+  const h = String(Math.floor(timerSeconds / 3600)).padStart(2, '0');
+  const m = String(Math.floor((timerSeconds % 3600) / 60)).padStart(2, '0');
+  const s = String(timerSeconds % 60).padStart(2, '0');
+  document.getElementById('timer-display').textContent = `${h}:${m}:${s}`;
+}
+
+function updateStudyTimeDisplay() {
+  const today = getToday();
+  const rec = ensureRecord(today);
+  const total = (rec.studyTime || 0) + (timerRunning ? Math.floor((new Date() - new Date(rec.timerStart)) / 1000) : 0);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  document.getElementById('today-study-time').textContent = `${h}小时${m}分`;
+}
+
+function startTimer() {
+  if (timerRunning) return;
+  const today = getToday();
+  const rec = ensureRecord(today);
+  timerRunning = true;
+  timerStartTime = new Date();
+  rec.timerStart = timerStartTime.toISOString();
+  saveData();
+
+  document.getElementById('timer-start-btn').classList.add('hidden');
+  document.getElementById('timer-pause-btn').classList.remove('hidden');
+  document.getElementById('timer-stop-btn').classList.remove('hidden');
+  document.getElementById('timer-status').textContent = '专注中...';
+
+  startTimerDisplay();
+}
+
+function startTimerDisplay() {
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    timerSeconds++;
+    updateTimerDisplay();
+    updateStudyTimeDisplay();
+  }, 1000);
+}
+
+function pauseTimer() {
+  if (!timerRunning) return;
+  timerRunning = false;
+  clearInterval(timerInterval);
+
+  const today = getToday();
+  const rec = ensureRecord(today);
+  const elapsed = Math.floor((new Date() - new Date(rec.timerStart)) / 1000);
+  rec.studyTime = (rec.studyTime || 0) + elapsed;
+  rec.timerStart = null;
+  saveData();
+
+  document.getElementById('timer-start-btn').classList.remove('hidden');
+  document.getElementById('timer-start-btn').textContent = '继续学习';
+  document.getElementById('timer-pause-btn').classList.add('hidden');
+  document.getElementById('timer-stop-btn').classList.remove('hidden');
+  document.getElementById('timer-status').textContent = '已暂停';
+}
+
+function stopTimer() {
+  if (timerRunning) {
+    const today = getToday();
+    const rec = ensureRecord(today);
+    const elapsed = Math.floor((new Date() - new Date(rec.timerStart)) / 1000);
+    rec.studyTime = (rec.studyTime || 0) + elapsed;
+    rec.timerStart = null;
+    saveData();
+  }
+
+  clearInterval(timerInterval);
+  timerRunning = false;
+
+  const h = String(Math.floor(timerSeconds / 3600)).padStart(2, '0');
+  const m = String(Math.floor((timerSeconds % 3600) / 60)).padStart(2, '0');
+  const s = String(timerSeconds % 60).padStart(2, '0');
+  document.getElementById('timer-confirm-time').textContent = `${h}:${m}:${s}`;
+  document.getElementById('timer-confirm-modal').classList.remove('hidden');
+}
+
+function closeTimerConfirm() {
+  document.getElementById('timer-confirm-modal').classList.add('hidden');
+  document.getElementById('timer-edit-section').classList.add('hidden');
+  document.getElementById('timer-edit-minutes').value = '';
+
+  // 重置计时器显示
+  timerSeconds = 0;
+  updateTimerDisplay();
+  document.getElementById('timer-start-btn').classList.remove('hidden');
+  document.getElementById('timer-start-btn').textContent = '开始学习';
+  document.getElementById('timer-pause-btn').classList.add('hidden');
+  document.getElementById('timer-stop-btn').classList.add('hidden');
+  document.getElementById('timer-status').textContent = '真是忍不住要酣畅淋漓地大学一顿呢';
+}
+
+function showTimerEdit() {
+  document.getElementById('timer-edit-section').classList.remove('hidden');
+}
+
+function confirmTimer() {
+  const editSection = document.getElementById('timer-edit-section');
+  const today = getToday();
+  const rec = ensureRecord(today);
+
+  if (!editSection.classList.contains('hidden')) {
+    const mins = parseInt(document.getElementById('timer-edit-minutes').value);
+    if (!isNaN(mins) && mins > 0) {
+      rec.studyTime = mins * 60;
+      saveData();
+    }
+  }
+
+  closeTimerConfirm();
+  updateStudyTimeDisplay();
+}
+
+// ==================== 5分钟启动器 ====================
+const starterTexts = [
+  '想象一下你失败之后得到了再来一次的机会',
+  '现在一无所获是因为六个月前什么都没做',
+  '种一棵树最好的时间是十年前，其次是现在'
+];
+
+function initStarter() {
+  const plan = appData.plans.find(p => p.id === appData.currentPlanId);
+  let text = starterTexts[Math.floor(Math.random() * starterTexts.length)];
+
+  if (plan && plan.outline) {
+    const uncompleted = getUncompletedMinUnits(plan.outline);
+    if (uncompleted.length > 0 && Math.random() < 0.3) {
+      const randomNode = uncompleted[Math.floor(Math.random() * uncompleted.length)];
+      text = `试试看，搞懂「${randomNode.title}」`;
+    }
+  }
+
+  document.getElementById('starter-text').textContent = text;
+}
+
+function startFiveMin() {
+  startTimer();
+  alert('5分钟启动！先学5分钟，状态会来的。');
+}
+
+// ==================== 统计页面 ====================
+function renderStatsPage() {
+  renderIntensityChart();
+  renderHeatmap();
+}
+
+function renderIntensityChart() {
+  const chartEl = document.getElementById('intensity-chart');
+  chartEl.innerHTML = '';
+
+  const days = ['周日','周一','周二','周三','周四','周五','周六'];
+  const today = new Date();
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const ds = formatDate(d);
+    const rec = appData.records[ds];
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'bar-wrapper';
+
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+
+    let height = 0;
+    let label = '';
+    let tooltip = '';
+
+    if (rec && rec.restDay) {
+      bar.classList.add('rest');
+      height = 4;
+      label = '躺了';
+      tooltip = `${days[d.getDay()]} · 休整日`;
+    } else if (rec && rec.tasks && rec.tasks.length > 0) {
+      const total = rec.tasks.length;
+      const done = rec.completed ? rec.completed.length : 0;
+      const ratio = done / total;
+      const studyHours = (rec.studyTime || 0) / 3600;
+
+      if (ratio >= 2/3) {
+        bar.classList.add('high');
+        height = Math.min(180, Math.max(40, studyHours * 40));
+        label = '猛学';
+        tooltip = `${days[d.getDay()]} · ${Math.floor(studyHours)}小时${Math.floor((studyHours%1)*60)}分 · 高强度`;
+      } else if (ratio >= 1/3) {
+        bar.classList.add('mid');
+        height = 80;
+        label = '还行';
+        tooltip = `${days[d.getDay()]} · ${Math.floor(studyHours)}小时${Math.floor((studyHours%1)*60)}分 · 中低强度`;
+      } else {
+        bar.classList.add('low');
+        height = 30;
+        label = '摸鱼';
+        tooltip = `${days[d.getDay()]} · ${Math.floor(studyHours)}小时${Math.floor((studyHours%1)*60)}分 · 低强度`;
+      }
+    } else {
+      bar.classList.add('low');
+      height = 30;
+      label = '摸鱼';
+      tooltip = `${days[d.getDay()]} · 无记录`;
+    }
+
+    bar.style.height = height + 'px';
+    bar.innerHTML = `<div class="bar-tooltip">${tooltip}</div>`;
+
+    const dayLabel = document.createElement('div');
+    dayLabel.className = 'bar-label';
+    dayLabel.textContent = days[d.getDay()];
+
+    wrapper.appendChild(bar);
+    wrapper.appendChild(dayLabel);
+    chartEl.appendChild(wrapper);
+  }
+}
+
+function renderHeatmap() {
+  const container = document.getElementById('heatmap-container');
+  container.innerHTML = '';
+
+  const heatmap = document.createElement('div');
+  heatmap.className = 'heatmap';
+
+  const today = new Date();
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - 89);
+
+  for (let i = 0; i < 90; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    const ds = formatDate(d);
+    const rec = appData.records[ds];
+    const isToday = ds === formatDate(today);
+
+    const cell = document.createElement('div');
+    cell.className = 'heatmap-cell';
+    if (isToday) cell.classList.add('today');
+
+    if (rec) {
+      if (rec.restDay) {
+        cell.classList.add('rest');
+      } else if (rec.tasks && rec.tasks.length > 0) {
+        const total = rec.tasks.length;
+        const done = rec.completed ? rec.completed.length : 0;
+        if (done >= total && rec.reflection && rec.reflection.length >= 10) {
+          cell.classList.add('done');
+        } else {
+          cell.classList.add('missed');
+        }
+      } else {
+        cell.classList.add('missed');
+      }
+    } else {
+      cell.classList.add('missed');
+    }
+
+    cell.title = ds;
+    heatmap.appendChild(cell);
+  }
+
+  container.appendChild(heatmap);
+}
+
+// ==================== 闪念笔记 ====================
+function renderNotesPage() {
+  const listEl = document.getElementById('notes-list');
+  const emptyEl = document.getElementById('notes-empty');
+
+  if (!appData.notes || appData.notes.length === 0) {
+    listEl.innerHTML = '';
+    emptyEl.classList.remove('hidden');
+    return;
+  }
+
+  emptyEl.classList.add('hidden');
+  listEl.innerHTML = '';
+
+  const sorted = [...appData.notes].sort((a, b) => new Date(b.time) - new Date(a.time));
+  sorted.forEach(note => {
+    const div = document.createElement('div');
+    div.className = 'note-item';
+
+    const time = document.createElement('div');
+    time.className = 'note-time';
+    time.textContent = new Date(note.time).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    const content = document.createElement('div');
+    content.className = 'note-content';
+    content.textContent = note.text;
+
+    if (note.tag) {
+      const tag = document.createElement('div');
+      tag.className = 'note-tag';
+      tag.textContent = '#' + note.tag;
+      content.appendChild(tag);
+    }
+
+    div.appendChild(time);
+    div.appendChild(content);
+    listEl.appendChild(div);
+  });
+}
+
+function openNoteModal() {
+  document.getElementById('note-modal').classList.remove('hidden');
+  document.getElementById('note-input').value = '';
+  document.getElementById('note-tag').value = '';
+}
+
+function closeNoteModal() {
+  document.getElementById('note-modal').classList.add('hidden');
+}
+
+function saveNote() {
+  const text = document.getElementById('note-input').value.trim();
+  if (!text) return;
+  const tag = document.getElementById('note-tag').value.trim();
+
+  appData.notes.push({
+    id: 'note_' + Date.now(),
+    text,
+    tag,
+    time: new Date().toISOString()
+  });
+  saveData();
+  closeNoteModal();
+  renderNotesPage();
+}
+
+// ==================== 奖励池 ====================
+function openRewardModal() {
+  document.getElementById('reward-modal').classList.remove('hidden');
+  renderRewardList();
+}
+
+function closeRewardModal() {
+  document.getElementById('reward-modal').classList.add('hidden');
+}
+
+function renderRewardList() {
+  const listEl = document.getElementById('reward-list');
+  listEl.innerHTML = '';
+
+  if (!appData.rewards || appData.rewards.length === 0) {
+    listEl.innerHTML = '<p style="color:var(--text-light);font-size:0.85rem;">暂无自定义奖品</p>';
+    return;
+  }
+
+  appData.rewards.forEach((reward, idx) => {
+    const div = document.createElement('div');
+    div.className = 'settings-row';
+    div.innerHTML = `
+      <div>
+        <div class="settings-label">${reward.name}</div>
+        <div class="settings-desc">100积分</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="redeemReward(${idx})">兑换</button>
+    `;
+    listEl.appendChild(div);
+  });
+}
+
+function addReward() {
+  const name = document.getElementById('new-reward-input').value.trim();
+  if (!name) return;
+  if (!appData.rewards) appData.rewards = [];
+  appData.rewards.push({ name, redeemed: false });
+  saveData();
+  document.getElementById('new-reward-input').value = '';
+  renderRewardList();
+}
+
+function redeemReward(idx) {
+  if (appData.totalPoints < 100) {
+    alert('积分不足！需要100积分。');
+    return;
+  }
+  appData.totalPoints -= 100;
+  appData.rewards[idx].redeemed = true;
+  const name = appData.rewards[idx].name;
+  alert(`🎉 恭喜！你兑换了「${name}」，${name}已到账！`);
+  saveData();
+  updatePointsDisplay();
+  renderRewardList();
+}
+
+function buyFreeDay() {
+  // 检查当月兑换次数
+  const today = getToday();
+  const month = today.substring(0, 7);
+  let monthRedeemed = 0;
+  // 简化：这里不严格追踪每月兑换次数，只检查积分
+  if (appData.totalPoints < 50) {
+    alert('积分不足！需要50积分。');
+    return;
+  }
+  appData.totalPoints -= 50;
+  appData.extraRestDays = (appData.extraRestDays || 0) + 1;
+  alert('兑换成功！获得1天自由日额度。');
+  saveData();
+  updatePointsDisplay();
+}
+
+// ==================== 设置页面 ====================
+function renderSettingsPage() {
+  const listEl = document.getElementById('plans-list');
+  listEl.innerHTML = '';
+
+  appData.plans.forEach(plan => {
+    const div = document.createElement('div');
+    div.className = 'settings-row';
+    div.innerHTML = `
+      <div>
+        <div class="settings-label">${plan.name}</div>
+        <div class="settings-desc">截止：${plan.deadline} | 标签：${plan.tags.join(', ') || '无'}</div>
+      </div>
+      <button class="btn btn-accent btn-sm" onclick="deletePlan('${plan.id}')">删除</button>
+    `;
+    listEl.appendChild(div);
+  });
+
+  document.getElementById('min-unit-level').value = appData.settings.minUnitLevel || 'section';
+}
+
+function deletePlan(planId) {
+  if (!confirm('确认删除该计划？')) return;
+  appData.plans = appData.plans.filter(p => p.id !== planId);
+  if (appData.currentPlanId === planId) {
+    appData.currentPlanId = appData.plans.length > 0 ? appData.plans[0].id : null;
+  }
+  saveData();
+  updatePlanSelector();
+  renderSettingsPage();
+}
+
+function updateMinUnitLevel(val) {
+  appData.settings.minUnitLevel = val;
+  saveData();
+  renderOutlinePage();
+}
+
+// ==================== 数据导入导出 ====================
+function exportData() {
+  const dataStr = JSON.stringify(appData, null, 2);
+  const blob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'go_study_backup_' + getToday() + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      appData = { ...getDefaultData(), ...data };
+      saveData();
+      alert('数据导入成功！');
+      location.reload();
+    } catch (err) {
+      alert('导入失败：文件格式错误');
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function resetAllData() {
+  if (!confirm('确定要清空所有数据吗？此操作不可恢复！')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  location.reload();
+}
+
+// ==================== 启动 ====================
+window.addEventListener('DOMContentLoaded', init);
+
+// 页面关闭前保存计时器状态
+window.addEventListener('beforeunload', () => {
+  if (timerRunning) {
+    const today = getToday();
+    const rec = ensureRecord(today);
+    const elapsed = Math.floor((new Date() - new Date(rec.timerStart)) / 1000);
+    rec.studyTime = (rec.studyTime || 0) + elapsed;
+    rec.timerStart = null;
+    saveData();
+  }
+  finalizeDailyPoints();
+});
+</script>
+</body>
+</html>
+'''
+
+with open('/mnt/agents/output/go_study.html', 'a', encoding='utf-8') as f:
+    f.write(part3)
+print("Part 3 written - JS complete")
+# 验证文件
+with open('/mnt/agents/output/go_study.html', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+print(f"文件总大小: {len(content)} 字符")
+print(f"包含 <script> 标签: {content.count('<script>')}")
+print(f"包含 </script> 标签: {content.count('</script>')}")
+print(f"包含 </html> 标签: {content.count('</html>')}")
+print(f"包含 </body> 标签: {content.count('</body>')}")
+print(f"包含 function: {content.count('function ')}")
+print(f"最后一行: {content[-100:]}")
+  
   // ==================== 数据备份 ====================
   exportData() {
     const data = JSON.stringify(this.data, null, 2);
@@ -2123,7 +3825,7 @@ class GrowthApp {
     ctx.fillStyle = '#8b4513';
     ctx.font = 'bold 48px serif';
     ctx.textAlign = 'center';
-    ctx.fillText('个人成长导航仪', 400, 80);
+    ctx.fillText('GO STUDY', 400, 80);
     ctx.font = '24px serif';
     ctx.fillText(this.today.slice(0, 7) + ' 月度海报', 400, 120);
 
@@ -2175,7 +3877,7 @@ class GrowthApp {
     ctx.fillStyle = '#8b4513';
     ctx.font = 'italic 20px serif';
     ctx.textAlign = 'center';
-    ctx.fillText('不是打卡，是导航。', 400, 1150);
+    ctx.fillText('just go to study please', 400, 1150);
 
     // 下载
     canvas.toBlob(blob => {
