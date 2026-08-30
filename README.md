@@ -750,13 +750,11 @@ textarea { resize: vertical; min-height: 80px; }
 
   <!-- 主内容 -->
   <main class="main-content">
-
     <!-- 复盘横幅 -->
     <div id="reviewBanner" class="review-banner" onclick="app.openReviewModal()">
       <span>⚠️ 昨日灵感尚未归档，今日进度暂缓。点击此处补写复盘。</span>
       <span class="stamp">锁定中</span>
     </div>
-
     <!-- 视图: 仪表盘 -->
     <div id="view-dashboard">
       <div class="stat-grid">
@@ -777,7 +775,6 @@ textarea { resize: vertical; min-height: 80px; }
           <div class="stat-label">提前进度</div>
         </div>
       </div>
-
       <div class="card" id="todayCard">
         <div class="card-title">📋 今日推荐任务</div>
         <div class="flex justify-between items-center mb-4 text-sm">
@@ -794,15 +791,13 @@ textarea { resize: vertical; min-height: 80px; }
           本月剩余休整: <span id="restQuota">3</span> 次 | 自由日兑换: <span id="freeDayQuota">3</span>/3
         </div>
       </div>
-
       <div class="card">
         <div class="card-title">🚀 5分钟启动器</div>
-        <p class="text-sm mb-4" style="color:var(--ink-light)">不知道从哪里开始？先啃一口再说。</p>
+        <p class="text-sm mb-4" style="color:var(--ink-light)">现在一无所获是因为六个月前你什么都没做</p>
         <button class="btn btn-accent w-full" style="font-size:1.1rem;padding:16px" id="starterBtn" onclick="app.openStarter()">
-          嘿，愣着干嘛，先啃这一口
+          种一棵树最好的时间是十年前，其次是现在
         </button>
       </div>
-
       <div class="card" id="reviewCard">
         <div class="card-title">📔 今日复盘</div>
         <p class="text-sm mb-2" style="color:var(--ink-light)">写完复盘后，今日的积分才会真正到账。</p>
@@ -810,7 +805,6 @@ textarea { resize: vertical; min-height: 80px; }
         <button class="btn mt-2" onclick="app.saveTodayReview()">💾 保存复盘</button>
       </div>
     </div>
-
     <!-- 视图: 大纲 -->
     <div id="view-syllabus" class="hidden">
       <div class="card">
@@ -826,7 +820,6 @@ textarea { resize: vertical; min-height: 80px; }
         </div>
         <div id="syllabusTree" class="mt-4"></div>
       </div>
-
       <div id="importPanel" class="card hidden">
         <div class="card-title">📥 导入大纲</div>
         <div class="flex gap-2 mb-4" style="flex-wrap:wrap">
@@ -834,7 +827,6 @@ textarea { resize: vertical; min-height: 80px; }
           <button class="tab-btn" onclick="app.switchImportTab('json')">📋 JSON导入</button>
           <button class="tab-btn" onclick="app.switchImportTab('manual')">✏️ 手动构建</button>
         </div>
-
         <div id="importSmart">
           <p class="text-sm mb-2" style="color:var(--ink-light)">粘贴教材目录，系统自动识别"第X章"和数字序号（如1.1、1.2）。最深层节点会自动设为"最小单元"。</p>
           <textarea id="smartInput" placeholder="第一章 绪论&#10;1.1 什么是经济学&#10;1.2 经济学方法论&#10;第二章 供需理论&#10;2.1 需求曲线&#10;2.2 供给曲线" style="min-height:200px"></textarea>
@@ -843,7 +835,6 @@ textarea { resize: vertical; min-height: 80px; }
             <button class="btn btn-outline" onclick="app.clearImport()">🗑️ 清空</button>
           </div>
         </div>
-
         <div id="importJson" class="hidden">
           <p class="text-sm mb-2" style="color:var(--ink-light)">粘贴标准JSON格式数据。每个节点可包含 title, children, isMinUnit 字段。</p>
           <textarea id="jsonInput" placeholder='[{"title":"第一章 绪论","children":[{"title":"1.1 什么是经济学","isMinUnit":true}]}]' style="min-height:200px;font-family:monospace"></textarea>
@@ -852,7 +843,6 @@ textarea { resize: vertical; min-height: 80px; }
             <button class="btn btn-outline" onclick="app.clearImport()">🗑️ 清空</button>
           </div>
         </div>
-
         <div id="importManual" class="hidden">
           <p class="text-sm mb-2" style="color:var(--ink-light)">手动逐条添加学习节点，构建你的学习地图。</p>
           <div class="form-row">
@@ -874,7 +864,6 @@ textarea { resize: vertical; min-height: 80px; }
         </div>
       </div>
     </div>
-
     <!-- 视图: 闪念 -->
     <div id="view-notes" class="hidden">
       <div class="card">
@@ -882,7 +871,6 @@ textarea { resize: vertical; min-height: 80px; }
         <div id="notesList"></div>
       </div>
     </div>
-
     <!-- 视图: 统计 -->
     <div id="view-stats" class="hidden">
       <div class="card">
@@ -894,7 +882,6 @@ textarea { resize: vertical; min-height: 80px; }
         <div id="pointsLog"></div>
       </div>
     </div>
-
     <!-- 视图: 设置 -->
     <div id="view-settings" class="hidden">
       <div class="card">
@@ -919,7 +906,6 @@ textarea { resize: vertical; min-height: 80px; }
           <div class="help-text">默认1.2，越大每日任务越多，预留的安全缓冲越大</div>
         </div>
       </div>
-
       <div class="card">
         <div class="card-title">🎁 奖励池</div>
         <div id="rewardsList"></div>
@@ -929,7 +915,6 @@ textarea { resize: vertical; min-height: 80px; }
           <button class="btn" onclick="app.addReward()">➕ 添加</button>
         </div>
       </div>
-
       <div class="card">
         <div class="card-title">💾 数据备份</div>
         <div class="flex gap-2" style="flex-wrap:wrap">
@@ -985,7 +970,7 @@ class GrowthApp {
       syllabus: [],
       settings: {
         endDate: d.toISOString().split('T')[0],
-        btnText: '嘿，愣着干嘛，先啃这一口',
+        btnText: '嘿，你还学不学？',
         fixedGoal: 0,
         buffer: 1.2,
         rewards: [
@@ -1482,7 +1467,7 @@ class GrowthApp {
   // ==================== 5分钟启动器 ====================
   openStarter() {
     const unlearned = this.getUnlearnedUnits();
-    let taskText = '先深呼吸三次，然后打开第一页';
+    let taskText = '深呼吸，学习而已';
     if (unlearned.length > 0) {
       const r = unlearned[Math.floor(Math.random() * unlearned.length)];
       taskText = '试试看，搞懂「' + r.title + '」';
@@ -3751,187 +3736,3 @@ window.addEventListener('beforeunload', () => {
   }
   finalizeDailyPoints();
 });
-</script>
-</body>
-</html>
-'''
-
-with open('/mnt/agents/output/go_study.html', 'a', encoding='utf-8') as f:
-    f.write(part3)
-print("Part 3 written - JS complete")
-# 验证文件
-with open('/mnt/agents/output/go_study.html', 'r', encoding='utf-8') as f:
-    content = f.read()
-
-print(f"文件总大小: {len(content)} 字符")
-print(f"包含 <script> 标签: {content.count('<script>')}")
-print(f"包含 </script> 标签: {content.count('</script>')}")
-print(f"包含 </html> 标签: {content.count('</html>')}")
-print(f"包含 </body> 标签: {content.count('</body>')}")
-print(f"包含 function: {content.count('function ')}")
-print(f"最后一行: {content[-100:]}")
-  
-  // ==================== 数据备份 ====================
-  exportData() {
-    const data = JSON.stringify(this.data, null, 2);
-    this.downloadFile(data, 'growth_navigator_backup_' + this.today + '.json', 'application/json');
-    this.showToast('数据已导出', 'success');
-  }
-
-  importData() {
-    try {
-      const text = document.getElementById('importDataArea').value.trim();
-      if (!text) { this.showToast('请输入要导入的数据', 'error'); return; }
-      const data = JSON.parse(text);
-      if (!data.syllabus || !data.settings || !data.state) {
-        this.showToast('数据格式不正确，缺少必要字段', 'error');
-        return;
-      }
-      if (!confirm('导入将覆盖当前所有数据，确定继续吗？')) return;
-      this.data = data;
-      this.saveData();
-      this.showToast('导入成功，页面即将刷新', 'success');
-      setTimeout(() => location.reload(), 1000);
-    } catch(e) {
-      this.showToast('导入失败：' + e.message, 'error');
-    }
-  }
-
-  resetAll() {
-    if (!confirm('⚠️ 警告：这将清除所有数据，包括大纲、记录、积分等！\n\n确定要重置吗？')) return;
-    if (!confirm('再次确认：你真的要删除所有数据吗？此操作不可恢复。')) return;
-    localStorage.removeItem('growthNavigator_v2');
-    this.showToast('所有数据已清除，页面即将刷新', 'success');
-    setTimeout(() => location.reload(), 1000);
-  }
-
-  exportPoster() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 800;
-    canvas.height = 1200;
-    const ctx = canvas.getContext('2d');
-
-    // 背景
-    ctx.fillStyle = '#f7f3e9';
-    ctx.fillRect(0, 0, 800, 1200);
-
-    // 网格
-    ctx.strokeStyle = 'rgba(139,69,19,0.08)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 800; i += 30) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 1200); ctx.stroke(); }
-    for (let i = 0; i < 1200; i += 30) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(800, i); ctx.stroke(); }
-
-    // 标题
-    ctx.fillStyle = '#8b4513';
-    ctx.font = 'bold 48px serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('GO STUDY', 400, 80);
-    ctx.font = '24px serif';
-    ctx.fillText(this.today.slice(0, 7) + ' 月度海报', 400, 120);
-
-    // 统计
-    const state = this.data.state;
-    ctx.font = '32px serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('当前积分: ' + state.totalPoints, 80, 200);
-    ctx.fillText('连续天数: ' + state.streak + ' 天', 80, 250);
-    const total = this.getTotalUnits();
-    const completed = this.getCompletedUnits();
-    const pct = total > 0 ? Math.round(completed / total * 100) : 0;
-    ctx.fillText('总进度: ' + pct + '%', 80, 300);
-    ctx.fillText('提前进度: ' + state.totalAhead + ' 单元', 80, 350);
-
-    // 简单日历
-    ctx.font = '20px serif';
-    ctx.fillText('本月日历', 80, 420);
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const startWeek = firstDay.getDay();
-    const days = lastDay.getDate();
-    const cellW = 60, cellH = 50, startX = 120, startY = 460;
-    ['日','一','二','三','四','五','六'].forEach((d, i) => {
-      ctx.fillStyle = '#8b4513';
-      ctx.fillText(d, startX + i * cellW + 20, startY);
-    });
-    for (let d = 1; d <= days; d++) {
-      const col = (startWeek + d - 1) % 7;
-      const row = Math.floor((startWeek + d - 1) / 7);
-      const x = startX + col * cellW;
-      const y = startY + 30 + row * cellH;
-      const dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
-      const rec = this.data.records[dateStr];
-      if (rec) {
-        if (rec.rested || rec.freeDay) ctx.fillStyle = 'rgba(100,100,100,0.3)';
-        else if (rec.allCompleted && rec.reviewCompleted) ctx.fillStyle = 'rgba(85,107,47,0.3)';
-        else ctx.fillStyle = 'rgba(178,34,34,0.2)';
-        ctx.fillRect(x, y - 20, cellW - 5, cellH - 5);
-      }
-      ctx.fillStyle = '#4a3f35';
-      ctx.fillText(String(d), x + 18, y + 5);
-    }
-
-    // 底部
-    ctx.fillStyle = '#8b4513';
-    ctx.font = 'italic 20px serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('just go to study please', 400, 1150);
-
-    // 下载
-    canvas.toBlob(blob => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'growth_poster_' + this.today + '.png';
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-    this.showToast('海报已生成', 'success');
-  }
-
-  downloadFile(content, filename, type) {
-    const blob = new Blob([content], { type });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  updateSidebar() {
-    const state = this.data.state;
-    const restTotal = state.restQuota.base + state.restQuota.bonus;
-    const restLeft = restTotal - state.restQuota.used;
-    document.getElementById('sidebarPoints').textContent = state.totalPoints;
-    document.getElementById('sidebarStreak').textContent = state.streak;
-    document.getElementById('sidebarRest').textContent = restLeft;
-  }
-
-  showCommonModal(title, body) {
-    document.getElementById('commonModalTitle').textContent = title;
-    document.getElementById('commonModalBody').innerHTML = body;
-    document.getElementById('commonModal').classList.add('active');
-  }
-
-  closeCommonModal() {
-    document.getElementById('commonModal').classList.remove('active');
-  }
-
-  showToast(msg, type) {
-    const toast = document.getElementById('toast');
-    toast.textContent = msg;
-    toast.className = 'toast ' + (type || '');
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 3000);
-  }
-}
-
-// 启动应用
-const app = new GrowthApp();
-</script>
-</body>
-</html>
-
